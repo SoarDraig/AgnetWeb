@@ -11,8 +11,6 @@ import ChatPanel from '@/components/panels/chat-panel'
 import NodeDetailPanel from '@/components/panels/node-detail-panel'
 import AgentFlowGraph from '@/components/agent-flow/agent-flow-graph'
 
-// ─── Panel resize handle ──────────────────────────────────────────────
-
 function ResizeHandle({ direction = 'vertical' }: { direction?: 'vertical' | 'horizontal' }) {
   return (
     <PanelResizeHandle
@@ -45,30 +43,27 @@ function ResizeHandle({ direction = 'vertical' }: { direction?: 'vertical' | 'ho
   )
 }
 
-// ─── Workspace ────────────────────────────────────────────────────────
-
 export default function AgentWorkspace() {
   const { state, actions } = useAgentWs()
   const [activeView, setActiveView] = useState<'graph' | 'split'>('split')
   const [mounted, setMounted] = useState(false)
+
   useEffect(() => { setMounted(true) }, [])
   if (!mounted) return null
 
   const selectedNode = state.nodes.find(n => n.id === state.selectedNodeId) ?? null
-  const headCommit = state.commits.find(c => c.tags.includes('HEAD'))?.hash ?? null
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[#000] text-[#d4d4d4]">
-      {/* Top bar */}
       <Topbar
         wsStatus={state.status}
         currentBranch={state.currentBranch}
         branches={state.branches}
         isRunning={state.isRunning}
+        workflow={state.workflow}
         actions={actions}
       />
 
-      {/* View toggle */}
       <div className="flex items-center gap-1 px-3 py-1.5 border-b border-[#1e1e1e] bg-[#000] flex-shrink-0">
         <span className="text-[9px] font-mono text-[#333] mr-2">视图</span>
         {(['graph', 'split'] as const).map(v => (
@@ -86,31 +81,27 @@ export default function AgentWorkspace() {
           </button>
         ))}
 
-        {/* Node count */}
         <div className="ml-auto flex items-center gap-3">
           <span className="text-[9px] font-mono text-[#333]">{state.nodes.length} 节点</span>
           <span className="text-[9px] font-mono text-[#333]">{state.edges.length} 连接</span>
+          <span className="text-[9px] font-mono text-[#333]">{state.workflow.components.filter(c => c.enabled).length} 组件启用</span>
         </div>
       </div>
 
-      {/* Main layout */}
       <div className="flex-1 overflow-hidden">
         <PanelGroup direction="horizontal" className="h-full">
-          {/* Left: Version sidebar */}
-          <Panel defaultSize={16} minSize={12} maxSize={28}>
+          <Panel defaultSize={18} minSize={13} maxSize={30}>
             <VersionSidebar
               commits={state.commits}
               branches={state.branches}
               currentBranch={state.currentBranch}
-              headCommit={headCommit}
               actions={actions}
             />
           </Panel>
 
           <ResizeHandle direction="vertical" />
 
-          {/* Center: ReactFlow graph */}
-          <Panel defaultSize={activeView === 'graph' ? 68 : 52} minSize={30}>
+          <Panel defaultSize={activeView === 'graph' ? 66 : 50} minSize={30}>
             <PanelGroup direction="vertical" className="h-full">
               <Panel defaultSize={70} minSize={40}>
                 <ReactFlowProvider>
@@ -120,20 +111,28 @@ export default function AgentWorkspace() {
 
               <ResizeHandle direction="horizontal" />
 
-              {/* Node detail panel (bottom of graph column) */}
-              <Panel defaultSize={30} minSize={20} maxSize={50}>
-                <NodeDetailPanel node={selectedNode} toolExecutions={state.toolExecutions} />
+              <Panel defaultSize={30} minSize={18} maxSize={50}>
+                <NodeDetailPanel
+                  node={selectedNode}
+                  toolExecutions={state.toolExecutions}
+                  causalNodes={state.causalMemoryNodes}
+                  causalEdges={state.causalMemoryEdges}
+                />
               </Panel>
             </PanelGroup>
           </Panel>
 
           <ResizeHandle direction="vertical" />
 
-          {/* Right: Chat panel */}
-          <Panel defaultSize={32} minSize={22} maxSize={45}>
+          <Panel defaultSize={32} minSize={24} maxSize={46}>
             <ChatPanel
               messages={state.messages}
               isRunning={state.isRunning}
+              chatSessions={state.chatSessions}
+              activeSessionId={state.activeSessionId}
+              workflow={state.workflow}
+              workflowTemplates={state.workflowTemplates}
+              apiConfig={state.apiConfig}
               actions={actions}
             />
           </Panel>

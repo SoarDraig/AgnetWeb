@@ -82,6 +82,15 @@ export interface AgentActionQuotas {
   maxTelemetrySliceActions: number
 }
 
+export interface OpenAICompatibleApiConfig {
+  enabled: boolean
+  baseUrl: string
+  apiKey: string
+  model: string
+  temperature: number
+  maxTokens: number
+}
+
 export interface AgentWorkflowOptions {
   autonomousToolAgent: boolean
   enableCausalMemory: boolean
@@ -194,6 +203,14 @@ export interface ChatMessage {
   toolOutput?: string
 }
 
+export interface AgentChatSession {
+  id: string
+  title: string
+  createdAt: number
+  updatedAt: number
+  messageCount: number
+}
+
 // ─── 工具执行记录 ─────────────────────────────────────────────────────
 
 export interface ToolExecution {
@@ -260,6 +277,7 @@ export interface AgentState {
 
   workflow: AgentWorkflowDefinition
   workflowTemplates: AgentWorkflowTemplate[]
+  apiConfig: OpenAICompatibleApiConfig
   causalMemoryNodes: AgentCausalMemoryNode[]
   causalMemoryEdges: AgentCausalMemoryEdge[]
 
