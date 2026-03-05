@@ -1,0 +1,152 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* Agent UI - always dark */
+  --background: #000000;
+  --foreground: #ededed;
+  --card: #0f0f0f;
+  --card-foreground: #ededed;
+  --popover: #111111;
+  --popover-foreground: #ededed;
+  --primary: #0070f3;
+  --primary-foreground: #ffffff;
+  --secondary: #1a1a1a;
+  --secondary-foreground: #ededed;
+  --muted: #1a1a1a;
+  --muted-foreground: #888888;
+  --accent: #00d4ff;
+  --accent-foreground: #000000;
+  --destructive: #ff4444;
+  --destructive-foreground: #ffffff;
+  --border: #1e1e1e;
+  --input: #1a1a1a;
+  --ring: #0070f3;
+  --radius: 0.375rem;
+
+  /* Agent-specific tokens */
+  --node-user: #0070f3;
+  --node-agent: #f59e0b;
+  --node-tool: #00d4ff;
+  --node-result-ok: #22c55e;
+  --node-result-err: #ff4444;
+  --node-memory: #a855f7;
+
+  --git-branch-main: #0070f3;
+  --git-branch-feature: #22c55e;
+  --git-branch-fix: #f59e0b;
+
+  --terminal-bg: #0a0a0a;
+  --terminal-border: #1e1e1e;
+  --terminal-text: #d4d4d4;
+  --terminal-prompt: #22c55e;
+  --terminal-comment: #6a9955;
+  --terminal-keyword: #569cd6;
+  --terminal-string: #ce9178;
+
+  --sidebar: #0a0a0a;
+  --sidebar-foreground: #ededed;
+  --sidebar-border: #1e1e1e;
+}
+
+@theme inline {
+  --font-sans: var(--font-inter), 'Inter', sans-serif;
+  --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* ReactFlow dark overrides */
+.react-flow {
+  background: #000 !important;
+}
+.react-flow__background {
+  background: #000 !important;
+}
+.react-flow__controls {
+  background: #0f0f0f !important;
+  border: 1px solid #1e1e1e !important;
+}
+.react-flow__controls-button {
+  background: #0f0f0f !important;
+  border-color: #1e1e1e !important;
+  color: #666 !important;
+  fill: #666 !important;
+}
+.react-flow__controls-button:hover {
+  background: #1a1a1a !important;
+  color: #d4d4d4 !important;
+  fill: #d4d4d4 !important;
+}
+.react-flow__minimap {
+  background: #0a0a0a !important;
+  border: 1px solid #1e1e1e !important;
+}
+.react-flow__edge-path {
+  stroke: #2a2a2a;
+}
+
+/* Thin scrollbar */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #1e1e1e transparent;
+}
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #1e1e1e;
+  border-radius: 2px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #2a2a2a;
+}
