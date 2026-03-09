@@ -42,6 +42,7 @@ const COMPONENT_CATALOG: ComponentCatalogEntry[] = [
   { type: 'evidence-hub', phase: 'investigate', name: 'Evidence Hub', description: '聚合证据，支持总结阶段可追溯。', color: '#14b8a6' },
   { type: 'summary-synthesizer', phase: 'synthesize', name: 'Summary Synthesizer', description: '合并上下文输出最终结论。', color: '#22c55e' },
   { type: 'critique-refiner', phase: 'synthesize', name: 'Critique Refiner', description: '二轮复核，提升稳定性与可信度。', color: '#f97316' },
+  { type: 'custom-prompt', phase: 'investigate', name: 'Custom Prompt', description: '注入可编辑系统提示词，定义聊天人设与边界。', color: '#94a3b8' },
 ]
 
 const CATALOG_MAP = new Map(COMPONENT_CATALOG.map(item => [item.type, item] as const))
@@ -78,6 +79,22 @@ export const AGENT_BLUEPRINTS: AgentBlueprint[] = [
       { name: '总结前召回', when: 'synthesize 前', objective: '召回 topK 关键历史，避免上下文断裂' },
     ],
     executionOrder: ['项目理解', '基线分析', '计划/执行循环', '因果召回', '总结与复核'],
+  },
+  {
+    id: 'daily-chatbot',
+    name: '日常聊天机器人',
+    description: '面向日常问答与陪聊场景，强调自然对话、稳定语气与轻量记忆。',
+    strategy: 'balanced',
+    stagePlan: {
+      discover: ['run-orchestrator', 'baseline-analyzer'],
+      investigate: ['custom-prompt', 'llm-planner', 'evidence-hub'],
+      synthesize: ['summary-synthesizer'],
+    },
+    memoryCheckpoints: [
+      { name: '会话偏好记忆', when: '每 3-5 轮对话后', objective: '记录用户偏好与禁忌，避免反复询问' },
+      { name: '上下文压缩', when: '超过长上下文阈值时', objective: '保留用户意图与事实，压缩闲聊内容' },
+    ],
+    executionOrder: ['接收用户消息', '套用人设 prompt', '生成回复计划', '组织回答', '输出自然回复'],
   },
   {
     id: 'deep-diagnosis',
@@ -192,6 +209,10 @@ export function suggestBlueprint(templates: AgentWorkflowTemplate[], projectHint
 
   if (hintText.includes('sdk') || hintText.includes('infra') || hintText.includes('distributed')) {
     return 'deep-diagnosis'
+  }
+
+  if (hintText.includes('chat') || hintText.includes('bot') || hintText.includes('对话') || hintText.includes('聊天')) {
+    return 'daily-chatbot'
   }
 
   if (hintText.includes('next') || hintText.includes('react') || templates.some(item => item.name.includes('标准'))) {
