@@ -33,6 +33,7 @@ import {
   MOCK_CAUSAL_MEMORY_NODES,
   MOCK_CAUSAL_MEMORY_EDGES,
 } from '@/lib/mock-data'
+import { buildWorkflowFromBlueprint } from '@/lib/agent-blueprints'
 
 const BRANCH_COLORS = ['#22c55e', '#f59e0b', '#a855f7', '#ec4899', '#06b6d4', '#ef4444']
 const SESSION_STORAGE_KEY = 'agent-web-chat-sessions-v1'
@@ -111,6 +112,7 @@ export interface AgentWsActions {
   removeWorkflowComponent: (componentId: string) => void
   addWorkflowComponent: (type: WorkflowComponentType) => void
   materializeWorkflowGraph: () => void
+  applyAgentBlueprint: (blueprintId: string) => void
   createChatSession: (title?: string) => void
   switchChatSession: (sessionId: string) => void
   renameChatSession: (sessionId: string, title: string) => void
@@ -546,6 +548,22 @@ export function useAgentWs(initialUrl = '') {
     })
   }, [])
 
+  const applyAgentBlueprint = useCallback((blueprintId: string) => {
+    setState(prev => {
+      const nextWorkflow = buildWorkflowFromBlueprint(prev.workflow, blueprintId)
+      if (nextWorkflow === prev.workflow) return prev
+
+      const { nodes, edges } = buildNodesFromWorkflow(nextWorkflow, prev.currentBranch)
+      return {
+        ...prev,
+        workflow: nextWorkflow,
+        nodes,
+        edges,
+        selectedNodeId: nodes[0]?.id ?? null,
+      }
+    })
+  }, [])
+
   const createChatSession = useCallback((title?: string) => {
     const cleanTitle = title?.trim()
     setState(prev => {
@@ -827,6 +845,7 @@ export function useAgentWs(initialUrl = '') {
     removeWorkflowComponent,
     addWorkflowComponent,
     materializeWorkflowGraph,
+    applyAgentBlueprint,
     createChatSession,
     switchChatSession,
     renameChatSession,
@@ -852,6 +871,7 @@ export function useAgentWs(initialUrl = '') {
     removeWorkflowComponent,
     addWorkflowComponent,
     materializeWorkflowGraph,
+    applyAgentBlueprint,
     createChatSession,
     switchChatSession,
     renameChatSession,
