@@ -42,16 +42,17 @@ const TOOL_LABELS: Record<string, string> = {
 }
 
 const COMPONENT_CATALOG: Array<{ type: WorkflowComponentType; label: string }> = [
-  { type: 'run-orchestrator', label: 'RunAnalysis Orchestrator' },
+  { type: 'run-orchestrator', label: 'Run Orchestrator' },
+  { type: 'manifest-loader', label: 'Manifest Loader' },
   { type: 'baseline-analyzer', label: 'Baseline Analyzer' },
-  { type: 'manifest-loader', label: 'Manifest Loader (Optional)' },
   { type: 'llm-planner', label: 'LLM Planner' },
-  { type: 'governance-gate', label: 'Deterministic Governance' },
   { type: 'tool-executor', label: 'Tool Executor' },
-  { type: 'causal-memory', label: 'Causal Memory (Optional)' },
+  { type: 'causal-memory', label: 'Causal Memory' },
+  { type: 'governance-gate', label: 'Governance Gate' },
   { type: 'evidence-hub', label: 'Evidence Hub' },
   { type: 'summary-synthesizer', label: 'Summary Synthesizer' },
-  { type: 'critique-refiner', label: 'Critique Refiner (Optional)' },
+  { type: 'critique-refiner', label: 'Critique Refiner' },
+  { type: 'custom-prompt', label: 'Custom Prompt Node' },
 ]
 
 function ThinkingBlock({ text }: { text: string }) {
@@ -155,6 +156,7 @@ function WorkflowComponentRow({
   onToggle,
   onMove,
   onRemove,
+  onPromptChange,
 }: {
   component: AgentWorkflowComponent
   canMoveUp: boolean
@@ -162,6 +164,7 @@ function WorkflowComponentRow({
   onToggle: () => void
   onMove: (direction: 'up' | 'down') => void
   onRemove: () => void
+  onPromptChange: (promptTemplate: string) => void
 }) {
   return (
     <div className="rounded border border-[#1e1e1e] bg-[#0b0b0b] p-2">
@@ -188,6 +191,17 @@ function WorkflowComponentRow({
         </div>
       </div>
       <p className="mt-1 text-[10px] text-[#666] leading-relaxed">{component.description}</p>
+      {component.type === 'custom-prompt' && (
+        <div className="mt-2">
+          <p className="text-[9px] text-[#777] mb-1">Prompt Template</p>
+          <textarea
+            className="w-full min-h-[68px] text-[10px] font-mono bg-[#000] border border-[#1e1e1e] rounded px-2 py-1.5 text-[#d4d4d4] resize-y"
+            value={String((component.config?.promptTemplate as string | undefined) ?? '')}
+            onChange={e => onPromptChange(e.target.value)}
+            placeholder="输入该节点执行时使用的提示词模板"
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -207,7 +221,6 @@ export default function ChatPanel({
   const [isMounted, setIsMounted] = useState(false)
   const [activeTab, setActiveTab] = useState<'chat' | 'workflow' | 'api'>('chat')
   const [selectedTemplate, setSelectedTemplate] = useState(workflowTemplates[0]?.id ?? '')
-  const [templateDraftName, setTemplateDraftName] = useState('')
   const [componentToAdd, setComponentToAdd] = useState<WorkflowComponentType>('causal-memory')
   const [snapshotNote, setSnapshotNote] = useState('')
   const [sessionDraftTitle, setSessionDraftTitle] = useState('')
@@ -223,20 +236,6 @@ export default function ChatPanel({
     const active = chatSessions.find(session => session.id === activeSessionId)
     setSessionDraftTitle(active?.title ?? '')
   }, [chatSessions, activeSessionId])
-
-  useEffect(() => {
-    if (!selectedTemplate) return
-    const template = workflowTemplates.find(item => item.id === selectedTemplate)
-    setTemplateDraftName(template?.name ?? '')
-  }, [selectedTemplate, workflowTemplates])
-
-  useEffect(() => {
-    if (workflowTemplates.length === 0) return
-    const exists = workflowTemplates.some(item => item.id === selectedTemplate)
-    if (!exists) {
-      setSelectedTemplate(workflowTemplates[0].id)
-    }
-  }, [selectedTemplate, workflowTemplates])
 
   const handleSend = () => {
     const trimmed = input.trim()
@@ -477,36 +476,7 @@ export default function ChatPanel({
                 应用
               </button>
             </div>
-            <div className="flex gap-2">
-              <input
-                className="flex-1 text-[11px] font-mono bg-[#000] border border-[#1e1e1e] rounded px-2 py-1.5 text-[#d4d4d4]"
-                value={templateDraftName}
-                onChange={e => setTemplateDraftName(e.target.value)}
-                placeholder="模板名称"
-              />
-              <button
-                className="text-[10px] font-mono px-2 py-1.5 rounded bg-[#111] border border-[#1e1e1e] text-[#d4d4d4] hover:bg-[#171717]"
-                onClick={() => {
-                  const clean = templateDraftName.trim()
-                  if (!clean) return
-                  actions.saveWorkflowAsTemplate(clean)
-                }}
-              >
-                另存为模板
-              </button>
-              <button
-                className="text-[10px] font-mono px-2 py-1.5 rounded border border-[#ff444433] text-[#ff6666] hover:bg-[#ff444411]"
-                onClick={() => {
-                  if (!selectedTemplate) return
-                  if (!window.confirm('确认删除该模板？')) return
-                  actions.deleteWorkflowTemplate(selectedTemplate)
-                }}
-              >
-                删除模板
-              </button>
-            </div>
             <p className="text-[10px] text-[#666]">{workflow.description}</p>
-            <p className="text-[10px] text-[#666]">提示：可在图中拖拽节点调整形状，布局会自动保存到当前工作流。</p>
           </section>
 
           <section className="rounded border border-[#1e1e1e] p-2 space-y-2 bg-[#0a0a0a]">
@@ -570,6 +540,7 @@ export default function ChatPanel({
                   onToggle={() => actions.toggleWorkflowComponent(component.id)}
                   onMove={direction => actions.moveWorkflowComponent(component.id, direction)}
                   onRemove={() => actions.removeWorkflowComponent(component.id)}
+                  onPromptChange={prompt => actions.updateWorkflowComponentPrompt(component.id, prompt)}
                 />
               ))}
             </div>

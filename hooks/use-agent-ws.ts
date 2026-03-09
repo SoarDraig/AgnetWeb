@@ -111,6 +111,7 @@ export interface AgentWsActions {
   moveWorkflowComponent: (componentId: string, direction: 'up' | 'down') => void
   removeWorkflowComponent: (componentId: string) => void
   addWorkflowComponent: (type: WorkflowComponentType) => void
+  updateWorkflowComponentPrompt: (componentId: string, promptTemplate: string) => void
   materializeWorkflowGraph: () => void
   applyAgentBlueprint: (blueprintId: string) => void
   createChatSession: (title?: string) => void
@@ -536,6 +537,27 @@ export function useAgentWs(initialUrl = '') {
     })
   }, [])
 
+  const updateWorkflowComponentPrompt = useCallback((componentId: string, promptTemplate: string) => {
+    setState(prev => ({
+      ...prev,
+      workflow: {
+        ...prev.workflow,
+        components: prev.workflow.components.map(component =>
+          component.id === componentId
+            ? {
+                ...component,
+                config: {
+                  ...(component.config ?? {}),
+                  promptTemplate,
+                },
+              }
+            : component,
+        ),
+        lastUpdated: Date.now(),
+      },
+    }))
+  }, [])
+
   const materializeWorkflowGraph = useCallback(() => {
     setState(prev => {
       const { nodes, edges } = buildNodesFromWorkflow(prev.workflow, prev.currentBranch)
@@ -844,6 +866,7 @@ export function useAgentWs(initialUrl = '') {
     moveWorkflowComponent,
     removeWorkflowComponent,
     addWorkflowComponent,
+    updateWorkflowComponentPrompt,
     materializeWorkflowGraph,
     applyAgentBlueprint,
     createChatSession,
@@ -870,6 +893,7 @@ export function useAgentWs(initialUrl = '') {
     moveWorkflowComponent,
     removeWorkflowComponent,
     addWorkflowComponent,
+    updateWorkflowComponentPrompt,
     materializeWorkflowGraph,
     applyAgentBlueprint,
     createChatSession,
@@ -1249,6 +1273,17 @@ function createComponentFromType(type: WorkflowComponentType, order: number): Ag
         description: '批判与精修结论',
         color: '#f97316',
       }
+    case 'custom-prompt':
+      return {
+        ...base,
+        name: `Custom Prompt #${order}`,
+        phase: 'investigate',
+        description: '自定义提示词节点',
+        color: '#94a3b8',
+        config: {
+          promptTemplate: '你是项目智能体，请基于当前上下文先输出计划，再输出执行建议。',
+        },
+      }
     default:
       return {
         ...base,
@@ -1268,53 +1303,44 @@ function simulateWorkflowRun(
 
   setTimeout(() => {
     setState(prev => {
-      const enabled = prev.workflow.components.filter(c => c.enabled)
-      const phaseNodes: AgentNode[] = enabled.slice(0, Math.min(4, enabled.length)).map((component, i) => ({
-        id: genId(),
-        kind: 'workflow-component' as const,
-        status: (i === enabled.length - 1 ? 'running' : 'success') as AgentNode['status'],
-        label: component.name,
-        detail: `处理用户请求：${content.slice(0, 24)}${content.length > 24 ? '…' : ''}`,
-        componentType: component.type,
-        phase: component.phase,
-        branch: prev.currentBranch,
-        timestamp: start + 400 + i * 380,
-      }))
+      const activeWorkflowNodes = prev.nodes.filter(node => node.kind === 'workflow-component')
+      const runningNodeId = activeWorkflowNodes[activeWorkflowNodes.length - 1]?.id ?? prev.selectedNodeId ?? genId()
 
-      const toolExec: ToolExecution | undefined = enabled.some(c => c.type === 'tool-executor')
+      const patchedNodes = patchWorkflowNodes(activeWorkflowNodes, content, start)
+
+      const toolExec: ToolExecution | undefined = prev.workflow.components.some(c => c.enabled && c.type === 'tool-executor')
         ? {
             id: genId(),
             tool: 'shell',
             status: 'running',
             input: {
               action: 'workflow_execute',
-              steps: enabled.map(c => c.type),
+              steps: prev.workflow.components.filter(c => c.enabled).map(c => c.type),
               causal_memory: prev.workflow.options.enableCausalMemory,
             },
             startTime: start + 500,
-            nodeId: phaseNodes.find(n => n.componentType === 'tool-executor')?.id ?? phaseNodes[0].id,
+            nodeId: patchedNodes.find(n => n.componentType === 'tool-executor')?.id ?? runningNodeId,
           }
         : undefined
 
-      const responseNodeId = phaseNodes[phaseNodes.length - 1]?.id ?? genId()
       const agentMessage: ChatMessage = {
         id: genId(),
         role: 'agent',
-        content: `已按「${prev.workflow.name}」执行。当前链路：${enabled.map(c => c.name).join(' -> ')}`,
+        content: `已按「${prev.workflow.name}」执行。当前链路：${prev.workflow.components.filter(c => c.enabled).map(c => c.name).join(' -> ')}`,
         thinking: prev.workflow.options.enableCausalMemory
           ? '因果记忆已参与检索增强，下一步建议创建 workflow 快照并打 stable 标签。'
           : '当前关闭了因果记忆，建议开启后再次比较结果。',
         timestamp: start + 1400,
-        nodeId: responseNodeId,
+        nodeId: runningNodeId,
         status: 'running',
       }
 
       return {
         ...prev,
-        nodes: [...prev.nodes, ...phaseNodes],
+        nodes: mergeWorkflowNodes(prev.nodes, patchedNodes),
         toolExecutions: toolExec ? [...prev.toolExecutions, toolExec] : prev.toolExecutions,
         messages: [...prev.messages, agentMessage],
-        selectedNodeId: responseNodeId,
+        selectedNodeId: runningNodeId,
       }
     })
   }, 350)
@@ -1322,7 +1348,11 @@ function simulateWorkflowRun(
   setTimeout(() => {
     setState(prev => ({
       ...prev,
-      nodes: prev.nodes.map(n => n.status === 'running' ? { ...n, status: 'success', tokenCount: n.tokenCount ?? 256 } : n),
+      nodes: prev.nodes.map(n =>
+        n.kind === 'workflow-component' && n.status === 'running'
+          ? { ...n, status: 'success', tokenCount: n.tokenCount ?? 256 }
+          : n,
+      ),
       toolExecutions: prev.toolExecutions.map(exec =>
         exec.status === 'running'
           ? {
@@ -1335,7 +1365,8 @@ function simulateWorkflowRun(
       ),
       messages: prev.messages.map(msg =>
         msg.status === 'running'
-          ? { ...msg, status: 'success', content: `${msg.content}\n已完成执行，可在左侧创建快照并管理分支。` }
+          ? { ...msg, status: 'success', content: `${msg.content}
+已完成执行，可在左侧创建快照并管理分支。` }
           : msg,
       ),
       isRunning: false,
@@ -1361,12 +1392,24 @@ async function runWorkflowFromBackend(
   setState(prev => {
     const mergedCausalNodes = mergeUniqueById(prev.causalMemoryNodes, result.causalMemoryNodes)
     const mergedCausalEdges = mergeUniqueById(prev.causalMemoryEdges, result.causalMemoryEdges)
-    const lastNodeId = result.nodes[result.nodes.length - 1]?.id ?? prev.selectedNodeId
+
+    const workflowResultNodes = result.nodes.filter(node => node.kind === 'workflow-component')
+    const nonWorkflowResultNodes = result.nodes.filter(node => node.kind !== 'workflow-component')
+
+    const patchedWorkflowNodes = projectResultToWorkflowNodes(prev.nodes, workflowResultNodes, request.prompt)
+    const nextNodes = [
+      ...mergeWorkflowNodes(prev.nodes, patchedWorkflowNodes),
+      ...nonWorkflowResultNodes,
+    ]
+
+    const lastNodeId = patchedWorkflowNodes[patchedWorkflowNodes.length - 1]?.id
+      ?? nonWorkflowResultNodes[nonWorkflowResultNodes.length - 1]?.id
+      ?? prev.selectedNodeId
 
     return {
       ...prev,
-      nodes: [...prev.nodes, ...result.nodes],
-      edges: [...prev.edges, ...result.edges],
+      nodes: nextNodes,
+      edges: result.edges.length > 0 ? result.edges : prev.edges,
       messages: [...prev.messages, ...result.messages],
       toolExecutions: [...prev.toolExecutions, ...result.toolExecutions],
       causalMemoryNodes: mergedCausalNodes,
@@ -1374,6 +1417,56 @@ async function runWorkflowFromBackend(
       selectedNodeId: lastNodeId,
       isRunning: false,
     }
+  })
+}
+
+function patchWorkflowNodes(nodes: AgentNode[], content: string, startTime: number): AgentNode[] {
+  if (nodes.length === 0) return nodes
+  return nodes.map((node, index) => ({
+    ...node,
+    status: index === nodes.length - 1 ? 'running' : 'success',
+    detail: `处理用户请求：${content.slice(0, 48)}${content.length > 48 ? '…' : ''}`,
+    timestamp: startTime + index * 320,
+    tokenCount: node.tokenCount ?? (node.componentType === 'llm-planner' || node.componentType === 'summary-synthesizer' ? 360 + index * 40 : undefined),
+  }))
+}
+
+function projectResultToWorkflowNodes(baseNodes: AgentNode[], incomingWorkflowNodes: AgentNode[], prompt: string): AgentNode[] {
+  const workflowBase = baseNodes.filter(node => node.kind === 'workflow-component')
+  if (workflowBase.length === 0) return incomingWorkflowNodes
+
+  return workflowBase.map((node, index) => {
+    const byType = incomingWorkflowNodes.find(item => item.componentType && item.componentType === node.componentType)
+    const fallback = incomingWorkflowNodes[index]
+    const source = byType ?? fallback
+    if (!source) {
+      return {
+        ...node,
+        detail: node.detail ?? `执行中：${prompt.slice(0, 32)}${prompt.length > 32 ? '…' : ''}`,
+      }
+    }
+
+    return {
+      ...node,
+      status: source.status,
+      detail: source.detail ?? node.detail,
+      duration: source.duration ?? node.duration,
+      tokenCount: source.tokenCount ?? node.tokenCount,
+      timestamp: source.timestamp ?? node.timestamp,
+      meta: {
+        ...(node.meta ?? {}),
+        ...(source.meta ?? {}),
+      },
+    }
+  })
+}
+
+function mergeWorkflowNodes(baseNodes: AgentNode[], patchedWorkflowNodes: AgentNode[]): AgentNode[] {
+  if (patchedWorkflowNodes.length === 0) return baseNodes
+  const patchedMap = new Map(patchedWorkflowNodes.map(item => [item.id, item] as const))
+  return baseNodes.map(node => {
+    if (node.kind !== 'workflow-component') return node
+    return patchedMap.get(node.id) ?? node
   })
 }
 

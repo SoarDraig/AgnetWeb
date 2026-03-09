@@ -44,6 +44,7 @@ const WORKFLOW_COMPONENT_META: Record<WorkflowComponentType, { color: string; la
   'evidence-hub': { color: '#14b8a6', label: 'Evidence' },
   'summary-synthesizer': { color: '#22c55e', label: 'Summary' },
   'critique-refiner': { color: '#f97316', label: 'Critique' },
+  'custom-prompt': { color: '#94a3b8', label: 'Custom' },
 }
 
 const STATUS_RING: Record<string, string> = {
