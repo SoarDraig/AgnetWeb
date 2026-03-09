@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import type {
   ChatMessage,
@@ -12,6 +12,7 @@ import type {
   AgentChatSession,
 } from '@/lib/types'
 import type { AgentWsActions } from '@/hooks/use-agent-ws'
+import { AGENT_BLUEPRINTS } from '@/lib/agent-blueprints'
 
 interface Props {
   messages: ChatMessage[]
@@ -51,6 +52,7 @@ const COMPONENT_CATALOG: Array<{ type: WorkflowComponentType; label: string }> =
   { type: 'evidence-hub', label: 'Evidence Hub' },
   { type: 'summary-synthesizer', label: 'Summary Synthesizer' },
   { type: 'critique-refiner', label: 'Critique Refiner' },
+  { type: 'custom-prompt', label: 'Custom Prompt Node' },
 ]
 
 function ThinkingBlock({ text }: { text: string }) {
@@ -154,6 +156,7 @@ function WorkflowComponentRow({
   onToggle,
   onMove,
   onRemove,
+  onPromptChange,
 }: {
   component: AgentWorkflowComponent
   canMoveUp: boolean
@@ -161,6 +164,7 @@ function WorkflowComponentRow({
   onToggle: () => void
   onMove: (direction: 'up' | 'down') => void
   onRemove: () => void
+  onPromptChange: (promptTemplate: string) => void
 }) {
   return (
     <div className="rounded border border-[#1e1e1e] bg-[#0b0b0b] p-2">
@@ -187,6 +191,17 @@ function WorkflowComponentRow({
         </div>
       </div>
       <p className="mt-1 text-[10px] text-[#666] leading-relaxed">{component.description}</p>
+      {component.type === 'custom-prompt' && (
+        <div className="mt-2">
+          <p className="text-[9px] text-[#777] mb-1">Prompt Template</p>
+          <textarea
+            className="w-full min-h-[68px] text-[10px] font-mono bg-[#000] border border-[#1e1e1e] rounded px-2 py-1.5 text-[#d4d4d4] resize-y"
+            value={String((component.config?.promptTemplate as string | undefined) ?? '')}
+            onChange={e => onPromptChange(e.target.value)}
+            placeholder="输入该节点执行时使用的提示词模板"
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -209,6 +224,7 @@ export default function ChatPanel({
   const [componentToAdd, setComponentToAdd] = useState<WorkflowComponentType>('causal-memory')
   const [snapshotNote, setSnapshotNote] = useState('')
   const [sessionDraftTitle, setSessionDraftTitle] = useState('')
+  const [selectedBlueprint, setSelectedBlueprint] = useState(AGENT_BLUEPRINTS[0]?.id ?? 'project-pilot')
 
   useEffect(() => { setIsMounted(true) }, [])
 
@@ -237,6 +253,10 @@ export default function ChatPanel({
 
   const options = workflow.options
   const activeSession = chatSessions.find(session => session.id === activeSessionId) ?? null
+  const activeBlueprint = useMemo(
+    () => AGENT_BLUEPRINTS.find(item => item.id === selectedBlueprint) ?? AGENT_BLUEPRINTS[0],
+    [selectedBlueprint],
+  )
 
   return (
     <div className="flex flex-col h-full bg-[#000] border-l border-[#1e1e1e]">
@@ -407,6 +427,37 @@ export default function ChatPanel({
       ) : activeTab === 'workflow' ? (
         <div className="flex-1 overflow-y-auto scrollbar-thin p-3 space-y-3">
           <section className="rounded border border-[#1e1e1e] p-2 space-y-2 bg-[#0a0a0a]">
+            <p className="text-[10px] font-mono text-[#555] uppercase tracking-widest">智能体编排器</p>
+            <select
+              className="w-full text-[11px] font-mono bg-[#000] border border-[#1e1e1e] rounded px-2 py-1.5 text-[#d4d4d4]"
+              value={selectedBlueprint}
+              onChange={e => setSelectedBlueprint(e.target.value)}
+            >
+              {AGENT_BLUEPRINTS.map(item => (
+                <option key={item.id} value={item.id}>{item.name}</option>
+              ))}
+            </select>
+            <div className="rounded border border-[#1e1e1e] bg-[#050505] p-2 space-y-2">
+              <p className="text-[11px] text-[#d4d4d4]">{activeBlueprint.description}</p>
+              <p className="text-[10px] text-[#666]">执行顺序：{activeBlueprint.executionOrder.join(' → ')}</p>
+              <div className="space-y-1">
+                <p className="text-[10px] text-[#888]">记忆检查点</p>
+                {activeBlueprint.memoryCheckpoints.map(item => (
+                  <div key={item.name} className="text-[10px] text-[#666] leading-relaxed">
+                    • {item.name}：{item.when}，{item.objective}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <button
+              className="w-full text-[10px] font-mono px-2 py-1.5 rounded bg-[#0070f3] text-white hover:bg-[#0060d3]"
+              onClick={() => actions.applyAgentBlueprint(selectedBlueprint)}
+            >
+              一键应用到当前工作流
+            </button>
+          </section>
+
+          <section className="rounded border border-[#1e1e1e] p-2 space-y-2 bg-[#0a0a0a]">
             <p className="text-[10px] font-mono text-[#555] uppercase tracking-widest">模板</p>
             <div className="flex gap-2">
               <select
@@ -489,6 +540,7 @@ export default function ChatPanel({
                   onToggle={() => actions.toggleWorkflowComponent(component.id)}
                   onMove={direction => actions.moveWorkflowComponent(component.id, direction)}
                   onRemove={() => actions.removeWorkflowComponent(component.id)}
+                  onPromptChange={prompt => actions.updateWorkflowComponentPrompt(component.id, prompt)}
                 />
               ))}
             </div>

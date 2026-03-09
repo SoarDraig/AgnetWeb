@@ -25,6 +25,7 @@ export const COMPONENT_HANDLER_REGISTRY: Record<WorkflowComponentType, Component
   'evidence-hub': evidenceHubHandler,
   'summary-synthesizer': summarySynthesizerHandler,
   'critique-refiner': critiqueRefinerHandler,
+  'custom-prompt': noopHandler,
 }
 
 export function resolveHandler(type: WorkflowComponentType): ComponentHandler {

@@ -35,6 +35,7 @@ const WORKFLOW_COLOR: Record<WorkflowComponentType, string> = {
   'evidence-hub': '#14b8a6',
   'summary-synthesizer': '#22c55e',
   'critique-refiner': '#f97316',
+  'custom-prompt': '#94a3b8',
 }
 
 function toRfNode(n: AgentNode, selectedId: string | null): Node {

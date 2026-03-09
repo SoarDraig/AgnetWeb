@@ -26,6 +26,7 @@ export type WorkflowComponentType =
   | 'evidence-hub'
   | 'summary-synthesizer'
   | 'critique-refiner'
+  | 'custom-prompt'
 
 export type NodeKind =
   | 'user-input'
