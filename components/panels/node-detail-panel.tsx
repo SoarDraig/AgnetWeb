@@ -28,6 +28,7 @@ const KIND_LABELS: Record<string, string> = {
   'agent-think': 'Agent 思考',
   'tool-call': '工具调用',
   'tool-result': '工具结果',
+  'workflow-loop': '循环容器',
   'memory': 'Memory 操作',
   'branch': '分支节点',
   'checkpoint': '检查点',

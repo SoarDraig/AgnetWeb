@@ -42,16 +42,16 @@ const TOOL_LABELS: Record<string, string> = {
 }
 
 const COMPONENT_CATALOG: Array<{ type: WorkflowComponentType; label: string }> = [
-  { type: 'run-orchestrator', label: 'Run Orchestrator' },
-  { type: 'manifest-loader', label: 'Manifest Loader' },
+  { type: 'run-orchestrator', label: 'RunAnalysis Orchestrator' },
   { type: 'baseline-analyzer', label: 'Baseline Analyzer' },
+  { type: 'manifest-loader', label: 'Manifest Loader (Optional)' },
   { type: 'llm-planner', label: 'LLM Planner' },
+  { type: 'governance-gate', label: 'Deterministic Governance' },
   { type: 'tool-executor', label: 'Tool Executor' },
-  { type: 'causal-memory', label: 'Causal Memory' },
-  { type: 'governance-gate', label: 'Governance Gate' },
+  { type: 'causal-memory', label: 'Causal Memory (Optional)' },
   { type: 'evidence-hub', label: 'Evidence Hub' },
   { type: 'summary-synthesizer', label: 'Summary Synthesizer' },
-  { type: 'critique-refiner', label: 'Critique Refiner' },
+  { type: 'critique-refiner', label: 'Critique Refiner (Optional)' },
 ]
 
 function ThinkingBlock({ text }: { text: string }) {
@@ -207,6 +207,7 @@ export default function ChatPanel({
   const [isMounted, setIsMounted] = useState(false)
   const [activeTab, setActiveTab] = useState<'chat' | 'workflow' | 'api'>('chat')
   const [selectedTemplate, setSelectedTemplate] = useState(workflowTemplates[0]?.id ?? '')
+  const [templateDraftName, setTemplateDraftName] = useState('')
   const [componentToAdd, setComponentToAdd] = useState<WorkflowComponentType>('causal-memory')
   const [snapshotNote, setSnapshotNote] = useState('')
   const [sessionDraftTitle, setSessionDraftTitle] = useState('')
@@ -222,6 +223,20 @@ export default function ChatPanel({
     const active = chatSessions.find(session => session.id === activeSessionId)
     setSessionDraftTitle(active?.title ?? '')
   }, [chatSessions, activeSessionId])
+
+  useEffect(() => {
+    if (!selectedTemplate) return
+    const template = workflowTemplates.find(item => item.id === selectedTemplate)
+    setTemplateDraftName(template?.name ?? '')
+  }, [selectedTemplate, workflowTemplates])
+
+  useEffect(() => {
+    if (workflowTemplates.length === 0) return
+    const exists = workflowTemplates.some(item => item.id === selectedTemplate)
+    if (!exists) {
+      setSelectedTemplate(workflowTemplates[0].id)
+    }
+  }, [selectedTemplate, workflowTemplates])
 
   const handleSend = () => {
     const trimmed = input.trim()
@@ -462,7 +477,36 @@ export default function ChatPanel({
                 应用
               </button>
             </div>
+            <div className="flex gap-2">
+              <input
+                className="flex-1 text-[11px] font-mono bg-[#000] border border-[#1e1e1e] rounded px-2 py-1.5 text-[#d4d4d4]"
+                value={templateDraftName}
+                onChange={e => setTemplateDraftName(e.target.value)}
+                placeholder="模板名称"
+              />
+              <button
+                className="text-[10px] font-mono px-2 py-1.5 rounded bg-[#111] border border-[#1e1e1e] text-[#d4d4d4] hover:bg-[#171717]"
+                onClick={() => {
+                  const clean = templateDraftName.trim()
+                  if (!clean) return
+                  actions.saveWorkflowAsTemplate(clean)
+                }}
+              >
+                另存为模板
+              </button>
+              <button
+                className="text-[10px] font-mono px-2 py-1.5 rounded border border-[#ff444433] text-[#ff6666] hover:bg-[#ff444411]"
+                onClick={() => {
+                  if (!selectedTemplate) return
+                  if (!window.confirm('确认删除该模板？')) return
+                  actions.deleteWorkflowTemplate(selectedTemplate)
+                }}
+              >
+                删除模板
+              </button>
+            </div>
             <p className="text-[10px] text-[#666]">{workflow.description}</p>
+            <p className="text-[10px] text-[#666]">提示：可在图中拖拽节点调整形状，布局会自动保存到当前工作流。</p>
           </section>
 
           <section className="rounded border border-[#1e1e1e] p-2 space-y-2 bg-[#0a0a0a]">

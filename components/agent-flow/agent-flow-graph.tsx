@@ -41,21 +41,27 @@ function toRfNode(n: AgentNode, selectedId: string | null): Node {
   return {
     id: n.id,
     type: 'agentNode',
-    position: { x: 0, y: 0 },
+    position: n.position ?? { x: 0, y: 0 },
     data: { ...n, selected: n.id === selectedId },
     selected: n.id === selectedId,
   }
 }
 
 function toRfEdge(e: AgentEdge): Edge {
+  const isContainEdge = e.label === 'contains'
+  const isFeedbackEdge = e.label === 'feedback' || e.label === 'next'
   return {
     id: e.id,
     source: e.source,
     target: e.target,
-    animated: e.animated ?? false,
+    animated: e.animated ?? isFeedbackEdge,
     label: e.label,
     markerEnd: { type: MarkerType.ArrowClosed, color: '#333', width: 12, height: 12 },
-    style: { stroke: '#2a2a2a', strokeWidth: 1.5 },
+    style: {
+      stroke: isContainEdge ? '#3a3a3a' : '#2a2a2a',
+      strokeWidth: isContainEdge ? 1.2 : 1.5,
+      strokeDasharray: isContainEdge ? '4 3' : undefined,
+    },
     labelStyle: { fontSize: 9, fill: '#555', fontFamily: 'monospace' },
     labelBgStyle: { fill: '#0a0a0a', stroke: '#1e1e1e' },
   }
@@ -63,16 +69,20 @@ function toRfEdge(e: AgentEdge): Edge {
 
 function layoutNodes(nodes: AgentNode[], edges: AgentEdge[]): Node[] {
   const rfNodes = nodes.map(n => toRfNode(n, null))
+  const layoutEdges = edges.filter(edge => edge.label !== 'feedback' && edge.label !== 'next')
 
   const inDegree: Record<string, number> = {}
   const adj: Record<string, string[]> = {}
   rfNodes.forEach(n => { inDegree[n.id] = 0; adj[n.id] = [] })
-  edges.forEach(e => {
+  layoutEdges.forEach(e => {
     adj[e.source]?.push(e.target)
     inDegree[e.target] = (inDegree[e.target] ?? 0) + 1
   })
 
   const queue = Object.keys(inDegree).filter(id => inDegree[id] === 0)
+  if (queue.length === 0 && rfNodes[0]) {
+    queue.push(rfNodes[0].id)
+  }
   const level: Record<string, number> = {}
   const col: Record<string, number> = {}
   const colCounter: Record<number, number> = {}
@@ -95,13 +105,23 @@ function layoutNodes(nodes: AgentNode[], edges: AgentEdge[]): Node[] {
   const X_SPACING = 260
   const Y_SPACING = 120
 
-  return rfNodes.map(n => ({
-    ...n,
-    position: {
-      x: (col[n.id] ?? 0) * X_SPACING - ((colCounter[level[n.id] ?? 0] ?? 1) - 1) * X_SPACING / 2,
-      y: (level[n.id] ?? 0) * Y_SPACING,
-    },
-  }))
+  return rfNodes.map(n => {
+    const original = nodes.find(item => item.id === n.id)
+    if (original?.position) {
+      return {
+        ...n,
+        position: original.position,
+      }
+    }
+
+    return {
+      ...n,
+      position: {
+        x: (col[n.id] ?? 0) * X_SPACING - ((colCounter[level[n.id] ?? 0] ?? 1) - 1) * X_SPACING / 2,
+        y: (level[n.id] ?? 0) * Y_SPACING,
+      },
+    }
+  })
 }
 
 interface Props {
@@ -124,6 +144,7 @@ function resolveNodeColor(data: MiniMapNodeData) {
     'agent-think': '#f59e0b',
     'tool-call': '#00d4ff',
     'tool-result': '#22c55e',
+    'workflow-loop': '#f59e0b',
     memory: '#a855f7',
     checkpoint: '#22c55e',
     branch: '#f59e0b',
@@ -165,6 +186,10 @@ export default function AgentFlowGraph({ agentState, actions }: Props) {
     actions.selectNode(node.id)
   }, [actions])
 
+  const onNodeDragStop = useCallback((_: React.MouseEvent, node: Node) => {
+    actions.updateNodePosition(node.id, node.position)
+  }, [actions])
+
   const onPaneClick = useCallback(() => {
     actions.selectNode(null)
   }, [actions])
@@ -178,6 +203,7 @@ export default function AgentFlowGraph({ agentState, actions }: Props) {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onNodeClick={onNodeClick}
+        onNodeDragStop={onNodeDragStop}
         onPaneClick={onPaneClick}
         nodeTypes={NODE_TYPES}
         fitView

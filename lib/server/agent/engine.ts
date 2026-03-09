@@ -1,7 +1,12 @@
 import type { AgentRunRequest, AgentRunResponse } from '@/lib/agent-run-contract'
 import type { AgentWorkflowComponent } from '@/lib/types'
 import type { AgentExecutionState } from '@/lib/server/agent/context'
-import { finishComponentNode, pushComponentNode } from '@/lib/server/agent/context'
+import {
+  createNodeId,
+  finishComponentNode,
+  pushComponentNode,
+  pushEdge,
+} from '@/lib/server/agent/context'
 import { resolveHandler } from '@/lib/server/agent/components'
 
 export async function executeAgentRun(
@@ -39,6 +44,26 @@ export async function executeAgentRun(
     tokenEstimate: Math.ceil((request.prompt?.length ?? 0) / 4),
     shouldFinish: false,
     stopReason: '',
+    plannedActionClasses: [],
+    pendingCodeReadPaths: [],
+    exhaustedCodeReadPaths: {},
+    readCodeFiles: {},
+    searchedQueries: {},
+    telemetryNextOffsets: {},
+    exhaustedTelemetryCursors: {},
+    telemetryAggregateDone: false,
+    telemetrySliceSuccessCount: 0,
+    codeReadSuccessCount: 0,
+    searchSuccessCount: 0,
+    successfulActionCount: 0,
+    consecutiveLowValueActions: 0,
+    bannedActionSignatures: {},
+    bannedCodeReadPaths: {},
+    lastActionSignature: '',
+    repeatActionCount: 0,
+    blockedActionCount: 0,
+    activeInvestigateLoopNodeId: null,
+    previousInvestigateLoopNodeId: null,
   }
 
   const enabledComponents = request.workflow.components.filter(component => component.enabled)
@@ -93,7 +118,7 @@ async function runInvestigateLoop(
     state.loopStep = step
     state.currentPhase = 'investigate'
     state.shouldFinish = false
-    const beforeSnapshot = `${state.nodes.length}|${state.toolExecutions.length}|${state.evidence.length}`
+    const beforeSnapshot = `${state.toolExecutions.length}|${state.evidence.length}|${state.successfulActionCount}`
 
     if (state.requestsUsed >= budget.maxRequests) {
       state.stopReason = `Reach max requests (${budget.maxRequests}).`
@@ -105,14 +130,44 @@ async function runInvestigateLoop(
       break
     }
 
+    const loopNodeId = createNodeId(state, 'loop')
+    state.nodes.push({
+      id: loopNodeId,
+      kind: 'workflow-loop',
+      status: 'running',
+      label: `Investigate Loop #${step}`,
+      detail: 'Plan → Governance → Tool → Memory → Evidence',
+      phase: 'investigate',
+      branch: state.currentBranch,
+      timestamp: Date.now(),
+    })
+
+    if (state.previousNodeId) {
+      pushEdge(state, state.previousNodeId, loopNodeId, 'loop:start')
+    }
+    if (state.previousInvestigateLoopNodeId) {
+      pushEdge(state, state.previousInvestigateLoopNodeId, loopNodeId, 'next', true)
+    }
+
+    state.activeInvestigateLoopNodeId = loopNodeId
+    state.previousInvestigateLoopNodeId = loopNodeId
+
+    let lastComponentNodeId: string | null = null
     for (const component of components) {
-      await executeComponent(state, component, workspaceRoot)
+      lastComponentNodeId = await executeComponent(state, component, workspaceRoot)
       if (state.shouldFinish) {
         break
       }
     }
+    if (lastComponentNodeId) {
+      pushEdge(state, lastComponentNodeId, loopNodeId, 'feedback', true)
+    }
 
-    const afterSnapshot = `${state.nodes.length}|${state.toolExecutions.length}|${state.evidence.length}`
+    finishComponentNode(state, loopNodeId, true)
+    state.activeInvestigateLoopNodeId = null
+    state.previousNodeId = loopNodeId
+
+    const afterSnapshot = `${state.toolExecutions.length}|${state.evidence.length}|${state.successfulActionCount}`
     if (!state.shouldFinish && beforeSnapshot === afterSnapshot) {
       state.stopReason = `No progress at loop step ${step}.`
       break
@@ -133,7 +188,7 @@ async function executeComponent(
   state: AgentExecutionState,
   component: AgentWorkflowComponent,
   workspaceRoot: string,
-) {
+): Promise<string | null> {
   const ctx = { state, component, workspaceRoot }
   const runningNode = pushComponentNode(
     ctx,
@@ -146,6 +201,7 @@ async function executeComponent(
     const handler = resolveHandler(component.type)
     await handler(ctx)
     finishComponentNode(state, runningNode.id, true)
+    return runningNode.id
   } catch (error) {
     finishComponentNode(
       state,
@@ -162,5 +218,6 @@ async function executeComponent(
       status: 'error',
       nodeId: runningNode.id,
     })
+    return runningNode.id
   }
 }

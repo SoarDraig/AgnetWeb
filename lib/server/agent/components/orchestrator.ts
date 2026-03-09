@@ -14,8 +14,8 @@ export const runOrchestratorHandler: ComponentHandler = (ctx: ComponentExecution
   pushMessage(state, {
     id: `${state.runId}-msg-orchestrator`,
     role: 'agent',
-    content: `后端执行已启动（RunId: ${state.runId}）。`,
-    thinking: '按前端工作流配置执行组件链路。',
+    content: `RunAnalysis 兼容执行已启动（RunId: ${state.runId}）。`,
+    thinking: '执行路径：Baseline -> Investigate Loop(Plan/Gov/Tool/Memory) -> Synthesis。',
     timestamp: Date.now(),
     status: 'success',
   })

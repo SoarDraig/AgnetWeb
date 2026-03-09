@@ -20,17 +20,17 @@ const BASE_TIME = 1741132800000 // 2025-03-05 00:00:00 UTC
 function createBaseWorkflowOptions(overrides: Partial<AgentWorkflowOptions> = {}): AgentWorkflowOptions {
   const base: AgentWorkflowOptions = {
     autonomousToolAgent: true,
-    enableCausalMemory: true,
+    enableCausalMemory: false,
     includeProjectManifest: true,
-    forceManifestFirst: true,
+    forceManifestFirst: false,
     includePreviousOutput: false,
     debugVerboseReport: true,
     causalMemoryTopK: 6,
     causalMemoryMaxChars: 1600,
     budget: {
-      maxSteps: 8,
-      maxRequests: 12,
-      maxTotalTokens: 18000,
+      maxSteps: 6,
+      maxRequests: 10,
+      maxTotalTokens: 12000,
       maxParallelRequests: 1,
     },
     toolPermissions: {
@@ -39,8 +39,8 @@ function createBaseWorkflowOptions(overrides: Partial<AgentWorkflowOptions> = {}
       allowCodeRead: true,
     },
     actionQuotas: {
-      maxCodeReadActions: 8,
-      maxCodeSearchActions: 8,
+      maxCodeReadActions: 6,
+      maxCodeSearchActions: 6,
       maxTelemetrySliceActions: 6,
     },
   }
@@ -77,22 +77,12 @@ function buildWorkflowComponents(_phaseBias: AgentPhase = 'discover'): AgentWork
     {
       id: 'wf-orchestrator',
       type: 'run-orchestrator',
-      name: 'RunAnalysis Orchestrator',
+      name: 'RunAnalysis Agent Orchestrator',
       phase: 'discover',
       enabled: true,
       color: '#0070f3',
-      description: '阶段机调度（baseline → planner/tool loop → synthesis）',
-      config: { blockedLimit: 4 },
-    },
-    {
-      id: 'wf-manifest',
-      type: 'manifest-loader',
-      name: 'Manifest Loader',
-      phase: 'discover',
-      enabled: true,
-      color: '#00d4ff',
-      description: '优先加载项目代码清单，供后续搜索/读取约束使用',
-      config: { maxCodeFilesInManifest: 120 },
+      description: '预算与阶段机控制（Baseline -> Loop -> Synthesis）',
+      config: { blockedLimit: 4, reserveFinalSummaryRequest: true },
     },
     {
       id: 'wf-baseline',
@@ -101,8 +91,18 @@ function buildWorkflowComponents(_phaseBias: AgentPhase = 'discover'): AgentWork
       phase: 'discover',
       enabled: true,
       color: '#22c55e',
-      description: '基线分析（RunSummary + system context）',
+      description: 'S1 基线分析，输出首轮结论与证据缺口',
       config: { modelStep: 'Baseline' },
+    },
+    {
+      id: 'wf-manifest',
+      type: 'manifest-loader',
+      name: 'Manifest Loader',
+      phase: 'discover',
+      enabled: false,
+      color: '#00d4ff',
+      description: '可选预加载 manifest（默认由 Loop 中动作触发）',
+      config: { maxCodeFilesInManifest: 120 },
     },
     {
       id: 'wf-planner',
@@ -111,8 +111,18 @@ function buildWorkflowComponents(_phaseBias: AgentPhase = 'discover'): AgentWork
       phase: 'investigate',
       enabled: true,
       color: '#f59e0b',
-      description: '规划下一步 AgentAction（支持 JSON/key=value/关键词回退）',
+      description: 'S2 循环规划动作（自治计划队列 + 阶段上下文）',
       config: { modelStep: 'Plan' },
+    },
+    {
+      id: 'wf-governance',
+      type: 'governance-gate',
+      name: 'Deterministic Governance',
+      phase: 'investigate',
+      enabled: true,
+      color: '#ec4899',
+      description: '动作治理：去重、封禁、预算、finish 收敛控制',
+      config: { repeatLimitSearch: 2, repeatLimitDefault: 3 },
     },
     {
       id: 'wf-tool',
@@ -121,7 +131,7 @@ function buildWorkflowComponents(_phaseBias: AgentPhase = 'discover'): AgentWork
       phase: 'investigate',
       enabled: true,
       color: '#06b6d4',
-      description: '执行 telemetry/code/manifest 类工具动作',
+      description: '执行工具动作并写入执行轨迹（manifest/search/read/telemetry）',
       config: {
         tools: ['get_project_manifest', 'query_telemetry_aggregate', 'read_telemetry_slice', 'search_code', 'read_code_file'],
       },
@@ -131,20 +141,10 @@ function buildWorkflowComponents(_phaseBias: AgentPhase = 'discover'): AgentWork
       type: 'causal-memory',
       name: 'Causal Memory Graph',
       phase: 'investigate',
-      enabled: true,
+      enabled: false,
       color: '#a855f7',
-      description: '记录因果边并做检索增强（topK + chars）',
+      description: '可选因果记忆检索增强（topK + chars）',
       config: { topK: 6, maxChars: 1600 },
-    },
-    {
-      id: 'wf-governance',
-      type: 'governance-gate',
-      name: 'Deterministic Governance',
-      phase: 'investigate',
-      enabled: true,
-      color: '#ec4899',
-      description: '动作去重/禁用签名/预算防护/重复动作惩罚',
-      config: { repeatLimitSearch: 2, repeatLimitDefault: 3 },
     },
     {
       id: 'wf-evidence',
@@ -153,7 +153,7 @@ function buildWorkflowComponents(_phaseBias: AgentPhase = 'discover'): AgentWork
       phase: 'investigate',
       enabled: true,
       color: '#14b8a6',
-      description: '累计证据片段并截断输出，喂给后续总结模型',
+      description: '证据汇聚与裁剪，供最终综合阶段使用',
       config: { clipChars: 3200 },
     },
     {
@@ -163,7 +163,7 @@ function buildWorkflowComponents(_phaseBias: AgentPhase = 'discover'): AgentWork
       phase: 'synthesize',
       enabled: true,
       color: '#22c55e',
-      description: '综合阶段收敛输出最终结论',
+      description: 'S5 综合输出最终结论（保留 Baseline + Evidence）',
       config: { modelStep: 'Summary' },
     },
     {
@@ -171,9 +171,9 @@ function buildWorkflowComponents(_phaseBias: AgentPhase = 'discover'): AgentWork
       type: 'critique-refiner',
       name: 'Critique / Refinement',
       phase: 'synthesize',
-      enabled: true,
+      enabled: false,
       color: '#f97316',
-      description: '二轮批判与润色，提升结论稳定性',
+      description: '可选二轮批判与润色',
       config: { enableParallelCritique: true },
     },
   ]
@@ -181,28 +181,29 @@ function buildWorkflowComponents(_phaseBias: AgentPhase = 'discover'): AgentWork
 
 export const MOCK_WORKFLOW_TEMPLATES: AgentWorkflowTemplate[] = [
   {
-    id: 'tpl-runanalysis-standard',
-    name: 'RunAnalysis 标准流',
-    description: '与 Unity RunAnalysisAgentOrchestrator 对齐的默认链路',
+    id: 'tpl-runanalysis-compatible',
+    name: 'RunAnalysis 平替模板',
+    description: '与 Unity RunAnalysisAgentOrchestrator 同构的默认工作流',
     components: buildWorkflowComponents('discover'),
     options: createBaseWorkflowOptions(),
   },
   {
-    id: 'tpl-autonomous-deep',
-    name: '自治深挖流',
-    description: '更高预算 + 强化探索，适合复杂故障排查',
+    id: 'tpl-runanalysis-deep',
+    name: 'RunAnalysis 深挖模板',
+    description: '提高预算并启用 Causal Memory，适用于复杂排障',
     components: buildWorkflowComponents('investigate'),
     options: createBaseWorkflowOptions({
-      budget: { maxSteps: 12, maxRequests: 18, maxTotalTokens: 30000, maxParallelRequests: 1 },
-      actionQuotas: { maxCodeReadActions: 14, maxCodeSearchActions: 12, maxTelemetrySliceActions: 10 },
+      enableCausalMemory: true,
+      budget: { maxSteps: 10, maxRequests: 14, maxTotalTokens: 24000, maxParallelRequests: 1 },
+      actionQuotas: { maxCodeReadActions: 10, maxCodeSearchActions: 10, maxTelemetrySliceActions: 8 },
       causalMemoryTopK: 10,
       causalMemoryMaxChars: 2400,
     }),
   },
   {
-    id: 'tpl-fast-regression',
-    name: '快速回归流',
-    description: '低成本快速诊断，关闭因果记忆与并行批判',
+    id: 'tpl-runanalysis-fast',
+    name: 'RunAnalysis 快速模板',
+    description: '低成本快速诊断，限制动作预算并关闭可选组件',
     components: buildWorkflowComponents('discover').map(item =>
       item.type === 'causal-memory' || item.type === 'critique-refiner'
         ? { ...item, enabled: false }
@@ -210,7 +211,7 @@ export const MOCK_WORKFLOW_TEMPLATES: AgentWorkflowTemplate[] = [
     ),
     options: createBaseWorkflowOptions({
       enableCausalMemory: false,
-      budget: { maxSteps: 4, maxRequests: 6, maxTotalTokens: 8000, maxParallelRequests: 1 },
+      budget: { maxSteps: 4, maxRequests: 6, maxTotalTokens: 9000, maxParallelRequests: 1 },
       debugVerboseReport: false,
       causalMemoryTopK: 3,
       causalMemoryMaxChars: 900,
@@ -220,8 +221,8 @@ export const MOCK_WORKFLOW_TEMPLATES: AgentWorkflowTemplate[] = [
 
 export const MOCK_WORKFLOW: AgentWorkflowDefinition = {
   id: 'wf-main',
-  name: 'RunAnalysis Workflow (Web)',
-  description: '将 GraduationProject 的 AI Agent 组件可视化后的当前工作流',
+  name: 'RunAnalysis Compatible Workflow',
+  description: '可平替 Unity RunAnalysis 的默认工作流模板',
   components: MOCK_WORKFLOW_TEMPLATES[0].components,
   options: MOCK_WORKFLOW_TEMPLATES[0].options,
   lastUpdated: BASE_TIME - 1000 * 60,

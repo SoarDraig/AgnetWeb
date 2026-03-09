@@ -32,6 +32,7 @@ export type NodeKind =
   | 'agent-think'
   | 'tool-call'
   | 'tool-result'
+  | 'workflow-loop'
   | 'memory'
   | 'branch'
   | 'checkpoint'
@@ -122,6 +123,7 @@ export interface AgentWorkflowDefinition {
   description: string
   components: AgentWorkflowComponent[]
   options: AgentWorkflowOptions
+  layout?: Record<string, { x: number; y: number }>
   lastUpdated: number
   isTemplate?: boolean
 }
@@ -132,6 +134,7 @@ export interface AgentWorkflowTemplate {
   description: string
   components: AgentWorkflowComponent[]
   options: AgentWorkflowOptions
+  layout?: Record<string, { x: number; y: number }>
 }
 
 export type AgentCausalRelationType = 'causes' | 'depends_on' | 'refines' | 'blocks'
@@ -165,6 +168,7 @@ export interface AgentNode {
   kind: NodeKind
   status: NodeStatus
   label: string
+  position?: { x: number; y: number }
   detail?: string
   tool?: ToolName
   commitHash?: string

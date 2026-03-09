@@ -40,6 +40,30 @@ export interface AgentExecutionState {
   tokenEstimate: number
   shouldFinish: boolean
   stopReason: string
+
+  plannedActionClasses: AgentActionType[]
+  pendingCodeReadPaths: string[]
+  exhaustedCodeReadPaths: Record<string, true>
+  readCodeFiles: Record<string, true>
+  searchedQueries: Record<string, true>
+  telemetryNextOffsets: Record<string, number>
+  exhaustedTelemetryCursors: Record<string, true>
+
+  telemetryAggregateDone: boolean
+  telemetrySliceSuccessCount: number
+  codeReadSuccessCount: number
+  searchSuccessCount: number
+  successfulActionCount: number
+  consecutiveLowValueActions: number
+
+  bannedActionSignatures: Record<string, true>
+  bannedCodeReadPaths: Record<string, true>
+  lastActionSignature: string
+  repeatActionCount: number
+  blockedActionCount: number
+
+  activeInvestigateLoopNodeId: string | null
+  previousInvestigateLoopNodeId: string | null
 }
 
 export interface ComponentExecutionContext {
@@ -114,10 +138,14 @@ export function pushComponentNode(
   }
   state.nodes.push(node)
 
-  if (state.previousNodeId) {
+  if (component.phase === 'investigate' && state.activeInvestigateLoopNodeId) {
+    pushEdge(state, state.activeInvestigateLoopNodeId, node.id, 'contains')
+  } else if (state.previousNodeId) {
     pushEdge(state, state.previousNodeId, node.id, component.phase)
+    state.previousNodeId = node.id
+  } else {
+    state.previousNodeId = node.id
   }
-  state.previousNodeId = node.id
   state.activeComponentNodeId = node.id
   return node
 }

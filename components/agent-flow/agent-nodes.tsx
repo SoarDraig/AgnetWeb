@@ -67,6 +67,7 @@ const KIND_STYLE: Record<string, { border: string; bg: string; icon: string; lab
   'agent-think': { border: '#f59e0b', bg: 'rgba(245,158,11,0.08)', icon: '#f59e0b', label: 'Agent' },
   'tool-call': { border: '#00d4ff', bg: 'rgba(0,212,255,0.08)', icon: '#00d4ff', label: '工具调用' },
   'tool-result': { border: '#22c55e', bg: 'rgba(34,197,94,0.08)', icon: '#22c55e', label: '工具结果' },
+  'workflow-loop': { border: '#f59e0b', bg: 'rgba(245,158,11,0.1)', icon: '#f59e0b', label: '循环容器' },
   memory: { border: '#a855f7', bg: 'rgba(168,85,247,0.08)', icon: '#a855f7', label: 'Memory' },
   branch: { border: '#f59e0b', bg: 'rgba(245,158,11,0.06)', icon: '#f59e0b', label: '分支' },
   checkpoint: { border: '#22c55e', bg: 'rgba(34,197,94,0.06)', icon: '#22c55e', label: '检查点' },

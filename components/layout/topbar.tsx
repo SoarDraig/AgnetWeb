@@ -71,8 +71,8 @@ export default function Topbar({ wsStatus, currentBranch, branches, isRunning, w
       <div className="flex-1" />
 
       <div className="flex items-center gap-1">
-        {['Manifest', 'Planner', 'Tools', 'Causal', 'Summary'].map((tool, i) => {
-          const colors = ['#00d4ff', '#f59e0b', '#22c55e', '#a855f7', '#ec4899']
+        {['Baseline', 'Loop', 'Governance', 'Tools', 'Summary'].map((tool, i) => {
+          const colors = ['#22c55e', '#f59e0b', '#ec4899', '#06b6d4', '#22c55e']
           return (
             <span
               key={tool}

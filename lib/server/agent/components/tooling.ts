@@ -23,6 +23,99 @@ const ACTION_TOOL_MAP: Record<AgentActionType, ToolName> = {
   finish: 'llm',
 }
 
+function normalizePathToken(path: string | undefined) {
+  return (path ?? '').trim().replace(/\\/g, '/').replace(/^\.?\//, '')
+}
+
+function removePendingCodePath(state: ComponentExecutionContext['state'], path: string) {
+  state.pendingCodeReadPaths = state.pendingCodeReadPaths.filter(item => item !== path)
+}
+
+function enqueueCodeCandidatesFromSearchOutput(state: ComponentExecutionContext['state'], output: string) {
+  const lines = output.split('\n').map(item => item.trim()).filter(Boolean)
+  for (const line of lines) {
+    const firstColon = line.indexOf(':')
+    if (firstColon <= 0) continue
+    const path = normalizePathToken(line.slice(0, firstColon))
+    if (!path) continue
+    if (state.readCodeFiles[path]) continue
+    if (state.exhaustedCodeReadPaths[path]) continue
+    if (state.pendingCodeReadPaths.includes(path)) continue
+    state.pendingCodeReadPaths.push(path)
+  }
+}
+
+function updatePhaseAfterAction(state: ComponentExecutionContext['state'], actionType: AgentActionType, success: boolean) {
+  if (!success) return
+  if (state.currentPhase !== 'discover') return
+
+  const hasTelemetry = actionType === 'query_telemetry_aggregate' || actionType === 'read_telemetry_slice'
+  const hasCodeProbe = actionType === 'search_code' || actionType === 'read_code_file'
+  if ((hasTelemetry && state.successfulActionCount >= 2) || hasCodeProbe) {
+    state.currentPhase = 'investigate'
+  }
+}
+
+function updateWorkingMemoryAfterExecution(
+  ctx: ComponentExecutionContext,
+  result: ToolActionExecution,
+) {
+  const { state } = ctx
+  const signature = `${result.actionType}|${(result.query ?? '').trim()}|${normalizePathToken(result.path)}`
+
+  if (result.actionType === 'search_code' && result.query) {
+    state.searchedQueries[result.query.toLowerCase()] = true
+  }
+
+  if (result.actionType === 'search_code' && result.success) {
+    enqueueCodeCandidatesFromSearchOutput(state, result.output)
+    if (!result.output.includes('No search result.')) {
+      state.searchSuccessCount += 1
+    }
+  }
+
+  if (result.actionType === 'read_code_file') {
+    const normalizedPath = normalizePathToken(result.path)
+    if (normalizedPath) {
+      removePendingCodePath(state, normalizedPath)
+      if (result.success) {
+        state.readCodeFiles[normalizedPath] = true
+        state.codeReadSuccessCount += 1
+      } else {
+        state.bannedCodeReadPaths[normalizedPath] = true
+      }
+    }
+  }
+
+  if (result.actionType === 'query_telemetry_aggregate' && result.success) {
+    state.telemetryAggregateDone = true
+  }
+
+  if (result.actionType === 'read_telemetry_slice' && result.success) {
+    state.telemetrySliceSuccessCount += 1
+  }
+
+  const lowValue =
+    !result.success ||
+    (result.actionType === 'search_code' && result.output.includes('No search result.')) ||
+    (result.actionType === 'query_telemetry_aggregate' && result.output.includes('not configured')) ||
+    (result.actionType === 'read_telemetry_slice' && result.output.includes('not configured'))
+
+  if (lowValue) {
+    state.consecutiveLowValueActions += 1
+    state.blockedActionCount += 1
+    if (signature) {
+      state.bannedActionSignatures[signature] = true
+    }
+  } else {
+    state.successfulActionCount += 1
+    state.consecutiveLowValueActions = 0
+    state.blockedActionCount = 0
+  }
+
+  updatePhaseAfterAction(state, result.actionType, result.success)
+}
+
 export const manifestLoaderHandler: ComponentHandler = async (ctx: ComponentExecutionContext) => {
   const { state, workspaceRoot } = ctx
   if (!state.request.workflow.options.includeProjectManifest) {
@@ -71,6 +164,7 @@ export const toolExecutorHandler: ComponentHandler = async (ctx: ComponentExecut
 
   for (const result of results) {
     appendToolArtifacts(ctx, result)
+    updateWorkingMemoryAfterExecution(ctx, result)
   }
 
   const hasError = results.some(item => !item.success)
@@ -98,10 +192,6 @@ async function executeAction(
       : 'No search result.'
 
     const firstFile = hits[0]?.file
-    if (firstFile) {
-      const firstReadable = state.plannedActions.find(item => item.actionType === 'read_code_file' && !item.path)
-      if (firstReadable) firstReadable.path = firstFile
-    }
 
     return {
       actionType,
@@ -114,9 +204,9 @@ async function executeAction(
   }
 
   if (actionType === 'read_code_file') {
-    const targetPath = path || state.plannedActions.find(item => item.actionType === 'read_code_file')?.path || 'hooks/use-agent-ws.ts'
+    const targetPath = path || state.pendingCodeReadPaths[0] || 'hooks/use-agent-ws.ts'
     try {
-      const output = await readCodeFile(workspaceRoot, targetPath, 1, 120)
+      const output = await readCodeFile(workspaceRoot, targetPath, 1, 180)
       return {
         actionType,
         success: true,
@@ -242,7 +332,11 @@ export const causalMemoryHandler: ComponentHandler = (ctx: ComponentExecutionCon
   }
 
   const recent = state.nodes
-    .filter(node => node.kind === 'tool-result' || node.kind === 'workflow-component')
+    .filter(node =>
+      node.kind === 'tool-result' ||
+      node.kind === 'workflow-component' ||
+      node.kind === 'workflow-loop',
+    )
     .slice(-4)
 
   let previousMemoryNodeId: string | null = null

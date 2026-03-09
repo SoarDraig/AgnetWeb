@@ -10,7 +10,7 @@ export const summarySynthesizerHandler: ComponentHandler = async (ctx: Component
   const failedTools = state.toolExecutions.filter(item => item.status === 'error').length
 
   const summary = [
-    `已完成后端执行，共 ${state.request.workflow.components.filter(c => c.enabled).length} 个启用组件。`,
+    `已完成 RunAnalysis 兼容执行，共 ${state.request.workflow.components.filter(c => c.enabled).length} 个启用组件。`,
     `工具执行：成功 ${successfulTools}，失败 ${failedTools}。`,
     `当前阶段：${state.currentPhase}。`,
     state.stopReason ? `停止原因：${state.stopReason}。` : '',
